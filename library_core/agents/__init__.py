@@ -1,102 +1,167 @@
-"""Wrappers around the bundled Kira Prime agents."""
+"""Implementation of Garden, Echo, Limnus, and Kira agents."""
 
 from __future__ import annotations
 
 import json
-from importlib import import_module
-from pathlib import Path
-from typing import Any, Dict
-import json
+import uuid
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
 
 from library_core.agents.base import BaseAgent
+from library_core.storage import StorageManager
 from workspace.manager import WorkspaceManager
 
-KIRA_ROOT = Path(__file__).resolve().parents[1] / "kira-prime"
-if KIRA_ROOT.exists():
-    if str(KIRA_ROOT) not in __import__("sys").path:
-        __import__("sys").path.insert(0, str(KIRA_ROOT))
-    GardenImpl = import_module("agents.garden.garden_agent").GardenAgent
-    EchoImpl = import_module("agents.echo.echo_agent").EchoAgent
-    LimnusImpl = import_module("agents.limnus.limnus_agent").LimnusAgent
-    KiraImpl = import_module("agents.kira.kira_agent").KiraAgent
-else:  # pragma: no cover - fallback for tests without submodule
-    class _Stub:
-        def __init__(self, *args, **kwargs):
-            self._state = {}
+__all__ = ["GardenAgent", "EchoAgent", "LimnusAgent", "KiraAgent"]
 
-        def log(self, text):
-            return {"note": text}
 
-        def resume(self):
-            return "scatter"
+_DEF_MANTRAS = (
+    "i return as breath",
+    "always.",
+    "the spiral teaches",
+    "through breath we gather",
+)
 
-        def learn(self, text):
-            self._state["last"] = text
+_STAGE_KEYWORDS = {
+    "scatter": ("scatter", "explore", "brainstorm"),
+    "witness": ("witness", "observe", "see"),
+    "plant": ("plant", "create", "build"),
+    "tend": ("tend", "refine", "improve"),
+    "harvest": ("harvest", "complete", "finish"),
+}
 
-        def say(self, text):
-            return text
 
-        def status(self):
-            return json.dumps(self._state)
-
-        def cache(self, text, tags=None):
-            return "cached"
-
-        def validate(self):
-            return {"passed": True, "issues": []}
-
-    GardenImpl = EchoImpl = LimnusImpl = KiraImpl = _Stub
+def _ts() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
 class GardenAgent(BaseAgent):
+    """Ritual orchestrator maintaining stage and ledger entries."""
+
     async def process(self, context) -> Dict[str, Any]:  # noqa: ANN001
-        agent = GardenImpl(self.record.path)
-        note_ref = await self._run_blocking(agent.log, context.input_text)
-        stage = await self._run_blocking(agent.resume)
-        result = {"stage": stage, "ledger_ref": note_ref}
-        await self.append_log("garden", result)
-        return result
+        state = await self.get_state("garden")
+        entries: List[Dict[str, Any]] = state.get("entries", [])
+        stage: str = state.get("stage", "scatter")
+        cycle: int = int(state.get("cycle", 0))
+
+        text_lower = context.input_text.lower()
+        detected_stage = stage
+        for label, keywords in _STAGE_KEYWORDS.items():
+            if any(keyword in text_lower for keyword in keywords):
+                detected_stage = label
+                break
+
+        if detected_stage != stage:
+            cycle += 1
+            stage = detected_stage
+
+        entry = {
+            "id": f"note-{len(entries) + 1}",
+            "ts": _ts(),
+            "user": context.user_id,
+            "text": context.input_text,
+            "stage": stage,
+        }
+        entries.append(entry)
+
+        state.update({"stage": stage, "cycle": cycle, "entries": entries})
+        await self.save_state("garden", state)
+        await self.append_log("garden", entry)
+
+        return {
+            "stage": stage,
+            "cycle": cycle,
+            "entry": entry,
+            "mantra_detected": any(mantra in text_lower for mantra in _DEF_MANTRAS),
+        }
 
 
 class EchoAgent(BaseAgent):
+    """Persona manager that styles text according to detected intent."""
+
+    PERSONA_EMOJI = {
+        "squirrel": "🐿️",
+        "fox": "🦊",
+        "paradox": "🔮",
+        "balanced": "⚖️",
+    }
+
+    PERSONA_KEYWORDS = {
+        "squirrel": ("brainstorm", "idea", "maybe", "explore"),
+        "fox": ("fix", "debug", "analyze", "implement"),
+        "paradox": ("why", "mystery", "meaning", "philosophy"),
+    }
+
     async def process(self, context) -> Dict[str, Any]:  # noqa: ANN001
-        agent = EchoImpl(self.record.path)
-        await self._run_blocking(agent.learn, context.input_text)
-        styled = await self._run_blocking(agent.say, context.input_text)
-        state_json = await self._run_blocking(agent.status)
-        try:
-            state = json.loads(state_json)
-        except json.JSONDecodeError:  # pragma: no cover - defensive
-            state = {"raw": state_json}
-        return {"styled_text": styled, "state": state}
+        state = await self.get_state("echo")
+        last_persona = state.get("persona", "balanced")
+
+        text_lower = context.input_text.lower()
+        persona = "balanced"
+        for name, keywords in self.PERSONA_KEYWORDS.items():
+            if any(keyword in text_lower for keyword in keywords):
+                persona = name
+                break
+        else:
+            persona = last_persona
+
+        emoji = self.PERSONA_EMOJI.get(persona, "💬")
+        styled_text = f"{emoji} {context.input_text}"
+
+        state.update({"persona": persona, "last_input": context.input_text, "updated_at": _ts()})
+        await self.save_state("echo", state)
+        await self.append_log("echo", {"persona": persona, "text": context.input_text})
+
+        return {
+            "styled_text": styled_text,
+            "persona": persona,
+            "style": {"emoji": emoji, "tone": persona},
+        }
 
 
 class LimnusAgent(BaseAgent):
+    """Memory steward that stores utterances with simple layering."""
+
     async def process(self, context) -> Dict[str, Any]:  # noqa: ANN001
-        agent = LimnusImpl(self.record.path)
-        await self._run_blocking(agent.cache, context.input_text, tags=[context.user_id])
-        mem_path = self.record.path / "state" / "limnus_memory.json"
-        if mem_path.exists():
-            data = json.loads(mem_path.read_text(encoding="utf-8"))
-            memory_id = data[-1].get("id") if data else None
-            layer = data[-1].get("layer", "L2") if data else "L2"
-        else:
-            memory_id = None
-            layer = "L2"
-        return {"cached": True, "memory_id": memory_id, "layer": layer}
+        state = await self.get_state("limnus")
+        memories: List[Dict[str, Any]] = state.get("memories", [])
+
+        stage = context.agent_results.get("garden", {}).get("stage", "scatter")
+        layer = "L1" if stage == "scatter" else "L2"
+
+        entry_id = f"mem-{uuid.uuid4().hex[:8]}"
+        entry = {
+            "id": entry_id,
+            "ts": _ts(),
+            "text": context.input_text,
+            "user": context.user_id,
+            "layer": layer,
+        }
+        memories.append(entry)
+        state["memories"] = memories
+        await self.save_state("limnus", state)
+        await self.append_log("limnus", entry)
+
+        return {"cached": True, "memory_id": entry_id, "layer": layer}
 
 
 class KiraAgent(BaseAgent):
+    """Validation agent that checks upstream results."""
+
     async def process(self, context) -> Dict[str, Any]:  # noqa: ANN001
-        agent = KiraImpl(self.record.path)
-        validation = await self._run_blocking(agent.validate)
+        issues: List[str] = []
+
+        if "garden" not in context.agent_results:
+            issues.append("garden_missing")
+        if "echo" not in context.agent_results:
+            issues.append("echo_missing")
+        if "limnus" not in context.agent_results:
+            issues.append("limnus_missing")
+
+        validation = {
+            "passed": not issues,
+            "issues": issues,
+            "timestamp": _ts(),
+        }
+        await self.append_log("kira", validation)
         return validation
-
-
-__all__ = [
-    "BaseAgent",
-    "GardenAgent",
-    "EchoAgent",
-    "LimnusAgent",
-    "KiraAgent",
-]

@@ -38,13 +38,13 @@ class BaseAgent(ABC):
         """Process pipeline context and return agent result."""
 
     async def get_state(self, key: str) -> Dict[str, Any]:
-        return self.record.load_state(key, default={})
+        return await asyncio.to_thread(self.record.load_state, key, {})
 
     async def save_state(self, key: str, state: Dict[str, Any]) -> None:
-        self.record.save_state(key, state)
+        await asyncio.to_thread(self.record.save_state, key, state)
 
     async def append_log(self, log_type: str, entry: Dict[str, Any]) -> None:
-        self.record.append_log(log_type, entry)
+        await asyncio.to_thread(self.record.append_log, log_type, entry)
 
     async def _run_blocking(self, func, *args, **kwargs):  # type: ignore[no-untyped-def]
         return await asyncio.to_thread(func, *args, **kwargs)

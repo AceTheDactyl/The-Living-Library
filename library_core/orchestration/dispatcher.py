@@ -27,10 +27,7 @@ class PrimeContext:
     workspace_id: str
     intent: ParsedIntent
     timestamp: str
-    garden_result: Dict[str, Any] | None = None
-    echo_result: Dict[str, Any] | None = None
-    limnus_result: Dict[str, Any] | None = None
-    kira_result: Dict[str, Any] | None = None
+    agent_results: Dict[str, Any] = field(default_factory=dict)
     errors: List[str] = field(default_factory=list)
 
 
@@ -69,26 +66,30 @@ class PrimeDispatcher:
         asyncio.run(self.logger.log_start(context))
 
         try:
-            context.garden_result = self._process_garden(context)
-            asyncio.run(self.logger.log_agent_step("garden", context, context.garden_result))
+        garden_result = self._process_garden(context)
+        context.agent_results["garden"] = garden_result
+        asyncio.run(self.logger.log_agent_step("garden", context, garden_result))
         except Exception as exc:  # pragma: no cover - defensive
             context.errors.append(f"garden: {exc}")
 
         try:
-            context.echo_result = self._process_echo(context)
-            asyncio.run(self.logger.log_agent_step("echo", context, context.echo_result))
+        echo_result = self._process_echo(context)
+        context.agent_results["echo"] = echo_result
+        asyncio.run(self.logger.log_agent_step("echo", context, echo_result))
         except Exception as exc:  # pragma: no cover - defensive
             context.errors.append(f"echo: {exc}")
 
         try:
-            context.limnus_result = self._process_limnus(context)
-            asyncio.run(self.logger.log_agent_step("limnus", context, context.limnus_result))
+        limnus_result = self._process_limnus(context)
+        context.agent_results["limnus"] = limnus_result
+        asyncio.run(self.logger.log_agent_step("limnus", context, limnus_result))
         except Exception as exc:  # pragma: no cover - defensive
             context.errors.append(f"limnus: {exc}")
 
         try:
-            context.kira_result = self._process_kira(context)
-            asyncio.run(self.logger.log_agent_step("kira", context, context.kira_result))
+        kira_result = self._process_kira(context)
+        context.agent_results["kira"] = kira_result
+        asyncio.run(self.logger.log_agent_step("kira", context, kira_result))
         except Exception as exc:  # pragma: no cover - defensive
             context.errors.append(f"kira: {exc}")
 
@@ -133,20 +134,23 @@ class PrimeDispatcher:
 
     def _process_kira(self, context: PrimeContext) -> Dict[str, Any]:
         validation = self.kira.validate()
-        return {"valid": validation.get("passed", False), "issues": validation.get("issues", [])}
+        return {
+            "valid": validation.get("passed", False),
+            "issues": validation.get("issues", []),
+        }
 
     # ------------------------------------------------------------------ helpers
 
     def _synthesise(self, context: PrimeContext) -> Dict[str, Any]:
         return {
-            "success": context.kira_result.get("valid", False) if context.kira_result else False,
+            "success": context.agent_results.get("kira", {}).get("valid", False),
             "timestamp": context.timestamp,
             "input": context.input_text,
             "intent": context.intent.intent_type,
-            "ritual": context.garden_result or {},
-            "echo": context.echo_result or {},
-            "memory": context.limnus_result or {},
-            "validation": context.kira_result or {},
+            "ritual": context.agent_results.get("garden", {}),
+            "echo": context.agent_results.get("echo", {}),
+            "memory": context.agent_results.get("limnus", {}),
+            "validation": context.agent_results.get("kira", {}),
             "errors": context.errors,
         }
 
