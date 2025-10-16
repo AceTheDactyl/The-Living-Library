@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from library_core.agents import EchoAgent, GardenAgent, KiraAgent, LimnusAgent
+from library_core.storage import StorageManager
 from pipeline.intent_parser import IntentParser, ParsedIntent
 from pipeline.logger import PipelineLogger
 from workspace.manager import WorkspaceManager
@@ -42,11 +43,11 @@ class PrimeDispatcher:
         self.record = self.manager.get(workspace_id)
         self._ensure_state_dirs()
 
-        root = self.record.path
-        self.garden = GardenAgent(root)
-        self.echo = EchoAgent(root)
-        self.limnus = LimnusAgent(root)
-        self.kira = KiraAgent(root)
+        storage = StorageManager(self.record.path)
+        self.garden = GardenAgent(self.workspace_id, storage, self.manager)
+        self.echo = EchoAgent(self.workspace_id, storage, self.manager)
+        self.limnus = LimnusAgent(self.workspace_id, storage, self.manager)
+        self.kira = KiraAgent(self.workspace_id, storage, self.manager)
 
         self.parser = IntentParser()
         self.logger = PipelineLogger(workspace_id, self.manager)
