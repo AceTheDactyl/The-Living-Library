@@ -9,6 +9,7 @@ __pycache__/
 
 # Node modules
 **/node_modules/
+collab-server/dist/
 
 # Local tooling
 *.log

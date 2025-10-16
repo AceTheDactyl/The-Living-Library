@@ -8,8 +8,14 @@ services:
     ports:
       - "8081:8080"
     environment:
-      - COLLAB_REDIS_URL=redis://redis:6379/0
-      - COLLAB_DATABASE_URL=postgresql://postgres:postgres@postgres:5432/collab
+      - PORT=8080
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=collab
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
     depends_on:
       - redis
       - postgres

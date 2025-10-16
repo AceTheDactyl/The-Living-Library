@@ -1,10 +1,15 @@
-FROM python:3.11-slim
+FROM node:20-alpine
 
 WORKDIR /app
 
-COPY library_core /app/library_core
-COPY scripts/bootstrap_living_library.sh /app/scripts/
+COPY collab-server/package*.json ./
 
-RUN pip install --no-cache-dir fastapi uvicorn[standard] redis asyncpg
+RUN npm ci
 
-CMD ["uvicorn", "library_core.collab.server:app", "--host", "0.0.0.0", "--port", "8080"]
+COPY collab-server ./
+
+RUN npm run build
+
+EXPOSE 8080
+
+CMD ["node", "dist/server.js"]

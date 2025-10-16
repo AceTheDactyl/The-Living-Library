@@ -21,6 +21,7 @@ scripts/bootstrap_living_library.sh
 - `The-Living_Garden-Chronicles/` – narrative assets (submodule)
 - `kira-prime/` – core agents and validators (submodule)
 - `library_core/` – integration scaffolding (config, collaboration, MRP, dictation)
+- `collab-server/` – Node/TypeScript WebSocket collaboration service
 - `workspace/` – workspace utilities (under construction)
 - `docs/` – design notes and onboarding material
 - `scripts/` – helper scripts (bootstrap, smoke tests)
