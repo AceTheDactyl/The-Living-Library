@@ -1,0 +1,27 @@
+# Python artifacts
+__pycache__/
+*.pyc
+*.pyo
+
+# Virtual environments
+.venv/
+.env/
+
+# Node modules
+**/node_modules/
+
+# Local tooling
+*.log
+
+# VSCode
+.vscode/
+
+# Docker
+*.tar
+
+# Bootstrap outputs
+phase2-checklist-report.json
+
+# Workspace state
+workspaces/*/state/
+workspaces/*/logs/

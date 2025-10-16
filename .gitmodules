@@ -1,0 +1,13 @@
+[submodule "echo-community-toolkit"]
+	path = echo-community-toolkit
+	url = ../Echo-Community-Toolkit
+[submodule "vessel-narrative-MRP"]
+	path = vessel-narrative-MRP
+	url = ../.remote/vessel-narrative-MRP.git
+[submodule "The-Living_Garden-Chronicles"]
+	path = The-Living_Garden-Chronicles
+	url = ../git-source/The-Living-Garden-Chronicles.git
+	branch = main
+[submodule "kira-prime"]
+	path = kira-prime
+	url = ../kira-prime
