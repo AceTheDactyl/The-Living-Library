@@ -11,7 +11,7 @@ from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 
-from library_core.agents import EchoAgent, GardenAgent, KiraAgent, LimnusAgent
+from library_core.agents import EchoAgent, GardenAgent, KiraAgent, LimnusAgent, VesselIndexAgent
 from library_core.agents.base import BaseAgent
 from library_core.storage import StorageManager
 from pipeline.circuit_breaker import CircuitBreaker
@@ -61,7 +61,9 @@ class PipelineContext:
 
 @dataclass(slots=True)
 class DispatcherConfig:
-    agent_order: List[str] = field(default_factory=lambda: ["garden", "echo", "limnus", "kira"])
+    agent_order: List[str] = field(
+        default_factory=lambda: ["garden", "echo", "limnus", "kira", "vessel_index"]
+    )
     parallel_execution: bool = False
     timeout_seconds: int = 30
     retry_enabled: bool = True
@@ -106,6 +108,7 @@ class EnhancedMRPDispatcher:
             "echo": EchoAgent(workspace_id, self.storage, self.manager),
             "limnus": LimnusAgent(workspace_id, self.storage, self.manager),
             "kira": KiraAgent(workspace_id, self.storage, self.manager),
+            "vessel_index": VesselIndexAgent(workspace_id, self.storage, self.manager),
         }
 
         self.breakers: Dict[str, CircuitBreaker] = {}
@@ -269,6 +272,7 @@ class EnhancedMRPDispatcher:
         response["echo"] = context.agent_results.get("echo", {})
         response["memory"] = context.agent_results.get("limnus", {})
         response["validation"] = context.agent_results.get("kira", {})
+        response["index"] = context.agent_results.get("vessel_index", {})
         return response
 
     async def get_metrics(self) -> Dict[str, Any]:
