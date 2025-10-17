@@ -1,9 +1,6 @@
 """
-Concrete implementations of the Garden, Echo, Limnus and Kira agents.
-
-Each agent follows the ESFG pipeline behaviour: Garden anchors the ritual,
-Echo styles the utterance and updates persona weights, Limnus commits the
-memory to caches and ledger, and Kira validates ledger integrity.
+Concrete implementations of the Echo, Limnus and Kira agents and re-export
+GardenAgent from its dedicated module.
 """
 
 from __future__ import annotations
@@ -12,11 +9,11 @@ import asyncio
 import hashlib
 import json
 import uuid
-from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List
 
+from .garden_agent import GardenAgent
 from library_core.agents.base import BaseAgent
 from library_core.storage import StorageManager
 from workspace.manager import WorkspaceManager
@@ -26,82 +23,6 @@ __all__ = ["GardenAgent", "EchoAgent", "LimnusAgent", "KiraAgent"]
 
 def _iso_now() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-
-
-# --------------------------------------------------------------------------- #
-# Garden Agent                                                               #
-# --------------------------------------------------------------------------- #
-
-
-class GardenAgent(BaseAgent):
-    """Ritual orchestrator responsible for ledgering inputs and consent."""
-
-    STAGES = ["scatter", "witness", "plant", "return", "give", "begin_again"]
-    LEDGER_KEY = "garden_ledger"
-    CONSENT_KEYWORDS = ("consent", "accept", "agree", "permit")
-
-    def __init__(
-        self,
-        workspace_id: str,
-        storage: StorageManager,
-        manager: WorkspaceManager,
-    ) -> None:
-        super().__init__(workspace_id, storage, manager)
-        # Ensure ledger exists synchronously
-        state = self.record.load_state(self.LEDGER_KEY, default={})
-        if "entries" not in state:
-            state = {"stage": "scatter", "entries": []}
-            self.record.save_state(self.LEDGER_KEY, state)
-
-    async def process(self, context) -> Dict[str, Any]:  # noqa: ANN001
-        ledger = await self.get_state(self.LEDGER_KEY)
-        stage = ledger.get("stage", "scatter")
-        entries: List[Dict[str, Any]] = ledger.get("entries", [])
-
-        # Ensure genesis entry exists.
-        if not entries:
-            entries.append({"ts": _iso_now(), "kind": "genesis", "data": {}})
-            stage = "scatter"
-            ledger["stage"] = stage
-
-        user_text = (context.input_text or "").strip()
-        event_kind = "note"
-        event_data: Dict[str, Any] = {"text": user_text}
-
-        lower = user_text.lower()
-        if lower in {"start", "begin"} and len(entries) == 1:
-            event_kind = "begin"
-        elif lower.startswith("open "):
-            event_kind = "open"
-            event_data = {"scroll": user_text.split(" ", 1)[1]}
-        elif lower == "next":
-            event_kind = "advance"
-            if stage in self.STAGES:
-                next_index = (self.STAGES.index(stage) + 1) % len(self.STAGES)
-                stage = self.STAGES[next_index]
-                ledger["stage"] = stage
-                event_data = {"to": stage}
-
-        if any(keyword in lower for keyword in self.CONSENT_KEYWORDS):
-            event_kind = "consent"
-            event_data = {"text": user_text}
-
-        new_entry = {"ts": _iso_now(), "kind": event_kind, "data": event_data}
-        entries.append(new_entry)
-        ledger["entries"] = entries
-
-        await self.save_state(self.LEDGER_KEY, ledger)
-
-        if event_kind == "advance":
-            entry_ref = f"stage:{stage}"
-        elif event_kind == "open":
-            entry_ref = f"open:{event_data.get('scroll', '')}"
-        else:
-            entry_ref = f"{event_kind}:{len(entries)}"
-
-        result = {"stage": stage, "ledger_ref": entry_ref}
-        await self.append_log("garden", result)
-        return result
 
 
 # --------------------------------------------------------------------------- #
@@ -191,7 +112,6 @@ class LimnusAgent(BaseAgent):
     async def process(self, context) -> Dict[str, Any]:  # noqa: ANN001
         memories: List[Dict[str, Any]] = await asyncio.to_thread(self._read_json, self.mem_path, [])
 
-        # Promote existing layers.
         for entry in memories:
             if entry.get("layer") == "L1":
                 entry["layer"] = "L2"
@@ -303,8 +223,9 @@ class KiraAgent(BaseAgent):
                     except Exception:  # pragma: no cover - defensive
                         pass
 
-        garden_state = await self.get_state(GardenAgent.LEDGER_KEY)
-        entries = garden_state.get("entries", [])
+        garden_state = await self.get_state("garden")
+        ledger = garden_state.get("ledger", {})
+        entries = ledger.get("entries", [])
         if not any(entry.get("kind") == "consent" for entry in entries):
             issues.append("No consent recorded in ritual ledger")
 
